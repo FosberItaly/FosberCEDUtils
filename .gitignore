@@ -1,0 +1,23 @@
+# Build and publish outputs
+bin/
+obj/
+publish/
+artifacts/
+
+# Visual Studio / IDE
+.vs/
+*.user
+*.suo
+*.rsuser
+
+# Optional VS Code local files
+.vscode/
+
+# Generated binaries and symbols
+*.exe
+*.dll
+*.pdb
+
+# Logs and temp
+*.log
+*.tmp
