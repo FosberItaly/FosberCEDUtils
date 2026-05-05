@@ -1,5 +1,4 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/FileCleanup/FileCleanup.csproj" />
-  </Folder>
+  <Project Path="BES_Scontrini/BES_Scontrini.csproj" Id="a41007f0-ccd1-4fe7-acc3-8ab1e067a37b" />
+  <Project Path="FileCleanup\FileCleanup.csproj" />
 </Solution>
