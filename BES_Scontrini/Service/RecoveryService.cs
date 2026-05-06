@@ -12,17 +12,16 @@ namespace BES_Scontrini.Service
         private readonly string _generaleConnectionString;
         private readonly string _praticheBesRoot;
         private readonly string _employeesOldRoot;
-        private readonly string _employeesNaRoot;
         private readonly string _supportFolder;
         private readonly DateTime _minDataIns;
         private readonly FileLogger _logger;
 
+        // costruttore
         public RecoveryService(
             string as400ConnectionString,
             string generaleConnectionString,
             string praticheBesRoot,
             string employeesOldRoot,
-            string employeesNaRoot,
             string supportFolder,
             DateTime minDataIns,
             FileLogger logger)
@@ -31,7 +30,6 @@ namespace BES_Scontrini.Service
             _generaleConnectionString = generaleConnectionString;
             _praticheBesRoot = praticheBesRoot;
             _employeesOldRoot = employeesOldRoot;
-            _employeesNaRoot = employeesNaRoot;
             _supportFolder = supportFolder;
             _minDataIns = minDataIns;
             _logger = logger;
@@ -67,74 +65,112 @@ namespace BES_Scontrini.Service
             _logger.Info("Elaborazione terminata.");
         }
 
+
         private async Task ProcessRowAsync(BsrRow row)
         {
+            // ============================
+            // 1. Estrazione IDREC
+            // ============================
             var idRec = ExtractLast6(row.BSRUCRE);
-            var practiceCode = BuildPracticeCode(row.BSRTBES, row.BSRABES, row.BSRPBES);
 
             if (string.IsNullOrWhiteSpace(idRec))
             {
-                _logger.Warn($"BSRUCRE non valido. BSRUCRE={row.BSRUCRE}, practiceCode={practiceCode}");
+                _logger.Warn(
+                    $"BSRUCRE non valido. BSRUCRE={row.BSRUCRE}, PracticeFolder={row.PracticeFolder}");
                 return;
             }
 
-            _logger.Info($"Inizio record: BSRUCRE={row.BSRUCRE}, IDREC={idRec}, practiceCode={practiceCode}");
+            _logger.Info(
+                $"Inizio record: BSRUCRE={row.BSRUCRE}, IDREC={idRec}, PracticeFolder={row.PracticeFolder}");
 
+            // ============================
+            // 2. Query BES_Scontrini
+            // ============================
             var scontrino = await GetLatestBesScontrinoAsync(idRec);
 
             if (scontrino is null)
             {
                 _logger.Warn(
-                    $"Nessun record in BES_Scontrini per IDREC={idRec}, BSRUCRE={row.BSRUCRE}, practiceCode={practiceCode}");
+                    $"Nessun record in BES_Scontrini. IDREC={idRec}, BSRUCRE={row.BSRUCRE}, PracticeFolder={row.PracticeFolder}");
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(scontrino.NomeFile))
             {
                 _logger.Warn(
-                    $"Record BES_Scontrini senza NomeFile. IDREC={idRec}, BSRUCRE={row.BSRUCRE}, practiceCode={practiceCode}");
+                    $"Record BES_Scontrini senza NomeFile. IDREC={idRec}, BSRUCRE={row.BSRUCRE}");
                 return;
             }
 
-            var besFolder = Path.Combine(_praticheBesRoot, practiceCode);
-            var besTargetFile = Path.Combine(besFolder, scontrino.NomeFile);
+            // ============================
+            // 3. Costruzione percorsi BES
+            // ============================
+            string besFolder = Path.Combine(_praticheBesRoot, row.PracticeFolder);
 
+            // Nome file reale nel BES (prefisso + nome file DB)
+            string besFileName = row.Chiave_BES + scontrino.NomeFile;
+
+            string besTargetFile = Path.Combine(besFolder, besFileName);
+
+            // ============================
+            // 4. Check presenza in Pratiche_BES
+            // ============================
             if (File.Exists(besTargetFile))
             {
                 _logger.Info(
-                    $"File già presente nella cartella BES. File={scontrino.NomeFile}, path={besTargetFile}");
+                    $"File già presente in Pratiche_BES. File={besFileName}, Path={besTargetFile}");
                 return;
             }
 
-            var oldPath = Path.Combine(_employeesOldRoot, scontrino.NomeFile);
+            // ============================
+            // 5. Fallback _OLD
+            // ============================
+            string oldPath = Path.Combine(_employeesOldRoot, scontrino.NomeFile);
+
             if (File.Exists(oldPath))
             {
-                var dest = CopyToSupport(oldPath, practiceCode, scontrino.NomeFile);
+                var dest = CopyToSupport(oldPath, row.Chiave_BES, scontrino.NomeFile);
                 _logger.Info(
-                    $"File copiato da _OLD. NomeFile={scontrino.NomeFile}, sorgente={oldPath}, destinazione={dest}");
+                    $"File copiato da _OLD. Sorgente={oldPath}, Destinazione={dest}");
                 return;
             }
 
-            var naPath = Path.Combine(_employeesNaRoot, scontrino.NomeFile);
-            if (File.Exists(naPath))
-            {
-                var dest = CopyToSupport(naPath, practiceCode, scontrino.NomeFile);
-                _logger.Info(
-                    $"File copiato da _NA. NomeFile={scontrino.NomeFile}, sorgente={naPath}, destinazione={dest}");
-                return;
-            }
 
+            // ============================
+            // 7. Non trovato
+            // ============================
             _logger.Warn(
-                $"File non trovato né in BES né in _OLD né in _NA. NomeFile={scontrino.NomeFile}, IDREC={idRec}, BSRUCRE={row.BSRUCRE}, practiceCode={practiceCode}");
+                $"File non trovato in BES, _OLD, _NA. " +
+                $"NomeFile={scontrino.NomeFile}, IDREC={idRec}, PracticeFolder={row.PracticeFolder}");
         }
+
+
 
         private async Task<List<BsrRow>> GetBsrRowsAsync(string besAnno, string bsrpbes)
         {
             const string sql = """
-            SELECT BSRTBES, BSRABES, BSRPBES, BSRRBES, BSRUCRE
+            
+            SELECT
+                BSRTBES,
+                BSRABES,
+                BSRPBES,
+                BSRRBES,
+                BSRUCRE,
+
+                BSRTBES
+                  + Documentazione_Ottica.dbo.fn_riempi(BSRABES, 2, 'S', '0')
+                  + Documentazione_Ottica.dbo.fn_riempi(BSRPBES, 6, 'S', '0')
+                  AS PracticeFolder,
+
+                '9_' + BSRTBES
+                  + Documentazione_Ottica.dbo.fn_riempi(BSRABES, 2, 'S', '0')
+                  + Documentazione_Ottica.dbo.fn_riempi(BSRPBES, 6, 'S', '0')
+                  + '_SYSTEM_' AS Chiave_BES
+
             FROM Tabelle_AS400.dbo.BSR00LF
             WHERE BSRPBES = @Bsrpbes
               AND BSRABES = @BesAnno
+            
             """;
 
             await using var connection = new SqlConnection(_as400ConnectionString);
@@ -174,23 +210,23 @@ namespace BES_Scontrini.Service
             });
         }
 
-        private string CopyToSupport(string sourcePath, string practiceCode, string originalFileName)
+        private string CopyToSupport(string sourcePath, string besPrefix, string originalFileName)
         {
             Directory.CreateDirectory(_supportFolder);
 
-            var newName = $"9_{practiceCode}_SYSTEM_{originalFileName}";
-            var destinationPath = Path.Combine(_supportFolder, newName);
+            string newFileName = besPrefix + originalFileName;
+            string destinationPath = Path.Combine(_supportFolder, newFileName);
 
-            File.Copy(sourcePath, destinationPath, overwrite: true);
+            if (!File.Exists(destinationPath))
+            {
+                File.Copy(sourcePath, destinationPath);
+            }
+            else
+            {
+                _logger.Warn($"File già presente in supporto: {destinationPath}");
+            }
 
             return destinationPath;
-        }
-
-        private static string BuildPracticeCode(string bsrttbes, string bsrabes, string bsrpbes)
-        {
-            var anno = (bsrabes ?? "").Trim().PadLeft(2, '0');
-            var progressivo = (bsrpbes ?? "").Trim().PadLeft(6, '0');
-            return $"{(bsrttbes ?? "").Trim()}{anno}{progressivo}";
         }
 
         private static string? ExtractLast6(string? value)
@@ -202,6 +238,7 @@ namespace BES_Scontrini.Service
             if (trimmed.Length < 6)
                 return null;
 
+            // devo recuperare gli ultimi 6 caratteri, non i primi 6
             return trimmed[^6..];
         }
     }

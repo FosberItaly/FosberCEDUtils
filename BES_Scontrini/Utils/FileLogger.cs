@@ -26,6 +26,7 @@ namespace BES_Scontrini.Utils
             };
         }
 
+        // metodi per scrittura del file. Alla fine richiamano tutti il metodo Write che scrive sia su console che su file
         public void Info(string message) =>
             Write("INFO", message);
 
