@@ -17,12 +17,15 @@ internal static class Program
     {
         try
         {
+            // recupero da appsettings i settings per la comunicazione con dispatch.asp
             Settings settings = LoadSettings();
 
+            // creo la directory per i log
             Directory.CreateDirectory(
                 Path.GetDirectoryName(settings.LogFile)!
             );
 
+            // crea effettivamente un client HTTP, cioè un oggetto C# capace di chiamare una pagina web.
             using var handler = new HttpClientHandler
             {
                 // Come nel VBS, vogliamo vedere eventuali redirect.
@@ -69,8 +72,10 @@ internal static class Program
             "appsettings.json"
         );
 
+        // leggo il json
         string json = File.ReadAllText(path);
 
+        // utilizzo deserialize per mettere il json letto in una istanza della classe Settings.
         return JsonSerializer.Deserialize<Settings>(
             json,
             new JsonSerializerOptions
@@ -91,16 +96,17 @@ internal static class Program
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
-                settings.DispatchUrl
+                settings.DispatchUrl // recupero la stringa per connettermi alla pagina web
             );
 
+            // aggiungo gli header alla richiesta
             request.Headers.Add(
                 settings.HeaderName,
                 settings.Secret
             );
 
             using HttpResponseMessage response =
-                await client.SendAsync(request);
+                await client.SendAsync(request); // uso il client per mandare la richiesta
 
             string body = await response.Content.ReadAsStringAsync();
 
@@ -126,6 +132,7 @@ internal static class Program
                     body.Trim();
             }
 
+            // loggo su file
             WriteLog(settings.LogFile, result);
 
             return response.IsSuccessStatusCode;
