@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="BES_Scontrini/BES_Scontrini.csproj" Id="a41007f0-ccd1-4fe7-acc3-8ab1e067a37b" />
   <Project Path="CraDispatcher/CraDispatcher.csproj" Id="7059dbe3-e8c4-465b-b1d1-55b1de92ca72" />
+  <Project Path="EmptyFile/EmptyFile.csproj" Id="be6e6f6e-58ed-46a7-b689-80b6f7438c65" />
   <Project Path="FileCleanup\FileCleanup.csproj" />
 </Solution>
